@@ -12,7 +12,6 @@ from telegram.ext import (
 )
 
 # Ініціалізація бази даних
-# Важливо: файл database.py повинен бути в тій же директорії, що і цей файл
 from database import init_db
 # Ініціалізація при запуску
 init_db()
@@ -26,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 # Константи
 ITEMS_PER_PAGE = 3
-YOUR_ADMIN_ID = 1634618032  # Замініть на свій Telegram ID
-TOKEN = "8047320199:AAF2B6pyxk8vWMp0RZxT75Oy43uWki-Ykhg"  # Ваш токен бота
+YOUR_ADMIN_ID = 1634618032
+TOKEN = "8047320199:AAF2B6pyxk8vWMp0RZxT75Oy43uWki-Ykhg"
 
 # Глобальні змінні
 user_filters = {}
-adding_shoe_state = {}  # Для відстеження стану додавання нового товару
-user_menu_stack = {}    # Для відстеження історії меню
+adding_shoe_state = {}  
+user_menu_stack = {}
 
 # Емодзі для інтерфейсу
 EMOJI = {
@@ -59,7 +58,6 @@ EMOJI = {
 
 # Функція для форматування розміру
 def format_size(size):
-    """Форматує розмір для відображення, видаляючи зайві нулі"""
     if isinstance(size, (int, float)):
         if size.is_integer():
             return str(int(size))
@@ -133,7 +131,7 @@ async def back_to_previous_menu(update, context):
         elif previous_menu == "admin_list_shoes": # Якщо повертаємось зі списку адміна
             await list_shoes(update, context)
     else:
-        # Якщо стек порожній або містить лише одне меню, повертаємося до головного
+        
         await show_main_menu(update, context)
 
 ### Меню користувача
@@ -150,7 +148,6 @@ async def show_main_menu(update, context):
     if update.effective_user.id == YOUR_ADMIN_ID:
         keyboard.append([InlineKeyboardButton(f"{EMOJI['admin']} Адмін-панель", callback_data="admin_panel")])
 
-    # Визначаємо, яке повідомлення редагувати/відповідати
     if update.callback_query:
         await update.callback_query.message.edit_text(
             "👟 <b>Магазин взуття DoomerSneakers</b>\nОберіть опцію:",
