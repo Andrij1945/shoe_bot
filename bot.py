@@ -68,7 +68,7 @@ def format_size(size):
 # Відправка деталей товару
 async def send_shoe_details(context, chat_id, item):
     shoe_id, name, brand, size, price, image_url = item
-    display_size = format_size(size)
+    display_size = format_size(size) # Припускаємо, що format_size визначена
     telegram_contact_url = "tg://resolve?domain=takar28"
     
     caption = (
@@ -76,36 +76,33 @@ async def send_shoe_details(context, chat_id, item):
         f"{EMOJI['brand']} <b>Бренд:</b> {brand}\n"
         f"{EMOJI['size']} <b>Розмір:</b> {display_size}\n"
         f"{EMOJI['money']} <b>Ціна:</b> {price} грн\n"
-        f"🆔 ID: {shoe_id}\n\n"
+        f"🆔 ID: {shoe_id}\n\n" # Додаємо порожній рядок для кращого розділення
         f"Для замовлення писати: <a href='{telegram_contact_url}'>@takar28</a>"
     )
 
     try:
         if image_url and image_url.startswith('http'):
-            message = await context.bot.send_photo(
+            return await context.bot.send_photo(
                 chat_id=chat_id,
                 photo=image_url,
                 caption=caption,
                 parse_mode="HTML"
             )
-            return message # Повертаємо об'єкт Message
     except Exception as e:
-        logger.error(f"Помилка відправки фото для товару ID:{shoe_id}: {e}")
+        logger.error(f"Помилка відправки фото: {e}")
         # Якщо фото не відправилось, відправляємо без фото
-        message = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id=chat_id,
             text=caption + f"\n\n{EMOJI['error']} Не вдалося завантажити зображення.",
             parse_mode="HTML"
         )
-        return message # Повертаємо об'єкт Message навіть якщо це текстове повідомлення
+        return None # Повертаємо None, якщо фото не відправилось
 
-    # Якщо image_url був None або не починався з http
-    message = await context.bot.send_message(
+    return await context.bot.send_message(
         chat_id=chat_id,
         text=caption,
         parse_mode="HTML"
     )
-    return message # Повертаємо об'єкт Message
 
 # Зберігаємо поточне меню для користувача
 def save_menu_state(user_id, menu_name):
@@ -118,10 +115,6 @@ def save_menu_state(user_id, menu_name):
 async def back_to_previous_menu(update, context):
     query = update.callback_query
     user_id = query.from_user.id
-
-    # Очищаємо ID товарних повідомлень при переході назад з пагінації
-    if 'last_shoe_message_ids' in context.user_data.get(user_id, {}):
-        await clear_previous_shoe_messages(update.effective_chat.id, user_id, context)
 
     if user_id in user_menu_stack and len(user_menu_stack[user_id]) > 1:
         user_menu_stack[user_id].pop()  # Видаляємо поточне меню зі стеку
@@ -138,38 +131,19 @@ async def back_to_previous_menu(update, context):
             await show_brand_menu(update, context)
         elif previous_menu == "sizes":
             await show_size_menu(update, context)
-        elif previous_menu == "remove_shoes":
+        elif previous_menu == "remove_shoes": # Якщо повертаємось з видалення
             await remove_shoe_menu(update, context)
-        elif previous_menu == "admin_list_shoes":
+        elif previous_menu == "admin_list_shoes": # Якщо повертаємось зі списку адміна
             await list_shoes(update, context)
     else:
+        # Якщо стек порожній або містить лише одне меню, повертаємося до головного
         await show_main_menu(update, context)
-
-#### Функція для видалення попередніх повідомлень про взуття
-async def clear_previous_shoe_messages(chat_id, user_id, context):
-    if user_id not in context.user_data:
-        context.user_data[user_id] = {}
-    
-    message_ids_to_delete = context.user_data[user_id].get('last_shoe_message_ids', [])
-    
-    for msg_id in message_ids_to_delete:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-        except Exception as e:
-            logger.warning(f"Не вдалося видалити повідомлення {msg_id} в чаті {chat_id}: {e}")
-    
-    context.user_data[user_id]['last_shoe_message_ids'] = [] # Очищаємо список після видалення
 
 ### Меню користувача
 
 #### Головне меню
 async def show_main_menu(update, context):
-    user_id = update.effective_user.id
-    save_menu_state(user_id, "main")
-
-    # Очищаємо ID товарних повідомлень при переході в головне меню
-    if 'last_shoe_message_ids' in context.user_data.get(user_id, {}):
-        await clear_previous_shoe_messages(update.effective_chat.id, user_id, context)
+    save_menu_state(update.effective_user.id, "main")
 
     keyboard = [
         [InlineKeyboardButton(f"{EMOJI['shoes']} Усі товари", callback_data="show_all")],
@@ -179,6 +153,7 @@ async def show_main_menu(update, context):
     if update.effective_user.id == YOUR_ADMIN_ID:
         keyboard.append([InlineKeyboardButton(f"{EMOJI['admin']} Адмін-панель", callback_data="admin_panel")])
 
+    # Визначаємо, яке повідомлення редагувати/відповідати
     if update.callback_query:
         await update.callback_query.message.edit_text(
             "👟 <b>Магазин взуття DoomerSneakers</b>\nОберіть опцію:",
@@ -196,12 +171,8 @@ async def show_main_menu(update, context):
 
 #### Меню фільтрів
 async def show_filter_menu(update, context):
+    save_menu_state(update.effective_user.id, "filters")
     user_id = update.effective_user.id
-    save_menu_state(user_id, "filters")
-
-    # Очищаємо ID товарних повідомлень при переході в меню фільтрів
-    if 'last_shoe_message_ids' in context.user_data.get(user_id, {}):
-        await clear_previous_shoe_messages(update.effective_chat.id, user_id, context)
 
     if user_id not in user_filters:
         user_filters[user_id] = {'brands': [], 'sizes': []}
@@ -211,6 +182,7 @@ async def show_filter_menu(update, context):
     if filters_data['brands']:
         filter_info += f"{EMOJI['brand']} <b>Бренди:</b> {', '.join(filters_data['brands'])}\n"
     if filters_data['sizes']:
+        # Форматуємо розміри для відображення
         formatted_sizes = [format_size(s) for s in filters_data['sizes']]
         filter_info += f"{EMOJI['size']} <b>Розміри:</b> {', '.join(formatted_sizes)}\n"
 
@@ -232,8 +204,8 @@ async def show_filter_menu(update, context):
 
 #### Меню брендів
 async def show_brand_menu(update, context):
+    save_menu_state(update.effective_user.id, "brands")
     user_id = update.effective_user.id
-    save_menu_state(user_id, "brands")
 
     conn = sqlite3.connect('shoes.db')
     cursor = conn.cursor()
@@ -257,8 +229,8 @@ async def show_brand_menu(update, context):
 
 #### Меню розмірів
 async def show_size_menu(update, context):
+    save_menu_state(update.effective_user.id, "sizes")
     user_id = update.effective_user.id
-    save_menu_state(user_id, "sizes")
 
     conn = sqlite3.connect('shoes.db')
     cursor = conn.cursor()
@@ -268,6 +240,7 @@ async def show_size_menu(update, context):
 
     keyboard = []
     for size_val in sizes:
+        # Порівнюємо float значення
         is_selected = float(size_val) in user_filters.get(user_id, {}).get('sizes', [])
         display_size = format_size(size_val)
         text = f"{'✅' if is_selected else '◻️'} Розмір {display_size}"
@@ -296,7 +269,7 @@ async def toggle_filter(update, context):
             user_filters[user_id]['brands'].remove(brand)
         else:
             user_filters[user_id]['brands'].append(brand)
-        await show_brand_menu(update, context)
+        await show_brand_menu(update, context)  # Оновлюємо меню брендів
 
     elif data.startswith("toggle_size_"):
         size_str = data.replace("toggle_size_", "")
@@ -306,7 +279,7 @@ async def toggle_filter(update, context):
                 user_filters[user_id]['sizes'].remove(size_float)
             else:
                 user_filters[user_id]['sizes'].append(size_float)
-            await show_size_menu(update, context)
+            await show_size_menu(update, context)  # Оновлюємо меню розмірів
         except ValueError:
             logger.error(f"Невірний формат розміру в callback_data: {size_str}")
             await query.answer(f"{EMOJI['error']} Помилка формату розміру.", show_alert=True)
@@ -339,10 +312,6 @@ async def show_admin_menu(update, context):
         return
 
     save_menu_state(user_id, "admin")
-    # Очищаємо ID товарних повідомлень при переході в адмін-меню
-    if 'last_shoe_message_ids' in context.user_data.get(user_id, {}):
-        await clear_previous_shoe_messages(update.effective_chat.id, user_id, context)
-
 
     keyboard = [
         [InlineKeyboardButton(f"{EMOJI['add']} Додати товар", callback_data="add_shoe_prompt")],
@@ -351,6 +320,7 @@ async def show_admin_menu(update, context):
         [InlineKeyboardButton(f"{EMOJI['back']} Головне меню", callback_data="back_menu")]
     ]
 
+    # Редагуємо або надсилаємо нове повідомлення залежно від типу update
     if update.callback_query:
         await message_to_edit.edit_text(
             f"{EMOJI['admin']} <b>Адмін-панель</b>\nОберіть дію:",
@@ -380,7 +350,8 @@ async def add_shoe_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     if update.callback_query:
         try:
-            await update.callback_query.message.delete() # Видаляємо попереднє повідомлення адмін-меню
+            # Видалити попереднє повідомлення адмін-меню, якщо воно було викликано з кнопки
+            await update.callback_query.message.delete()
         except Exception as e:
             logger.warning(f"Не вдалося видалити повідомлення після add_shoe_prompt: {e}")
 
@@ -390,6 +361,7 @@ async def add_shoe_message_handler(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
 
     if user_id != YOUR_ADMIN_ID or user_id not in adding_shoe_state:
+        # Ігноруємо повідомлення, якщо не в процесі додавання товару або не адмін
         return
 
     state = adding_shoe_state[user_id]
@@ -405,6 +377,7 @@ async def add_shoe_message_handler(update: Update, context: ContextTypes.DEFAULT
         await update.message.reply_text("Введіть <b>розмір</b> товару (наприклад 42.5 або 43):", parse_mode="HTML")
     elif state['step'] == 3:
         try:
+            # Обробка дробових розмірів, заміна коми на крапку
             text = text.replace(',', '.').strip()
             size = float(text)
             if size <= 0:
@@ -445,7 +418,8 @@ async def add_shoe_message_handler(update: Update, context: ContextTypes.DEFAULT
             logger.error(f"Помилка при додаванні товару: {e}")
         finally:
             conn.close()
-            del adding_shoe_state[user_id]
+            del adding_shoe_state[user_id]  # Завершуємо стан додавання
+        # Після додавання товару, повертаємося до адмін-меню, використовуючи update.message
         await show_admin_menu(update, context)
 
 #### Меню видалення товарів (список з кнопками видалення)
@@ -454,11 +428,7 @@ async def remove_shoe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer("У вас немає доступу до цієї функції.", show_alert=True)
         return
 
-    user_id = update.effective_user.id
-    save_menu_state(user_id, "remove_shoes")
-    # Очищаємо ID товарних повідомлень при переході в меню видалення
-    if 'last_shoe_message_ids' in context.user_data.get(user_id, {}):
-        await clear_previous_shoe_messages(update.effective_chat.id, user_id, context)
+    save_menu_state(update.effective_user.id, "remove_shoes")
 
     conn = sqlite3.connect('shoes.db')
     cursor = conn.cursor()
@@ -507,7 +477,7 @@ async def remove_shoe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         conn.close()
 
-    await remove_shoe_menu(update, context)
+    await remove_shoe_menu(update, context)  # Оновлюємо список після видалення
 
 #### Список товарів (для адміна, без пагінації, простіший список)
 async def list_shoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -515,11 +485,7 @@ async def list_shoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.answer("У вас немає доступу до цієї функції.", show_alert=True)
         return
 
-    user_id = update.effective_user.id
-    save_menu_state(user_id, "admin_list_shoes")
-    # Очищаємо ID товарних повідомлень при переході в список адміна
-    if 'last_shoe_message_ids' in context.user_data.get(user_id, {}):
-        await clear_previous_shoe_messages(update.effective_chat.id, user_id, context)
+    save_menu_state(update.effective_user.id, "admin_list_shoes")
 
     conn = sqlite3.connect('shoes.db')
     cursor = conn.cursor()
@@ -547,26 +513,7 @@ async def list_shoes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_shoes_page(update, context, page=0):
     user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
     filters_data = user_filters.get(user_id, {})
-
-    # 1. Очищаємо попередні повідомлення про взуття
-    if user_id not in context.user_data:
-        context.user_data[user_id] = {}
-    
-    await clear_previous_shoe_messages(chat_id, user_id, context)
-    
-    # Видаляємо повідомлення з кнопками пагінації з попередньої сторінки
-    if 'last_pagination_message_id' in context.user_data[user_id]:
-        try:
-            await context.bot.delete_message(
-                chat_id=chat_id,
-                message_id=context.user_data[user_id]['last_pagination_message_id']
-            )
-        except Exception as e:
-            logger.warning(f"Не вдалося видалити попереднє повідомлення пагінації: {e}")
-        del context.user_data[user_id]['last_pagination_message_id']
-
 
     conn = sqlite3.connect('shoes.db')
     cursor = conn.cursor()
@@ -579,6 +526,7 @@ async def show_shoes_page(update, context, page=0):
         params.extend(filters_data['brands'])
 
     if 'sizes' in filters_data and filters_data['sizes']:
+        # Розміри вже зберігаються як float, тому просто використовуємо їх
         size_params = filters_data['sizes']
         query += f" AND size IN ({','.join(['?']*len(size_params))})"
         params.extend(size_params)
@@ -594,31 +542,29 @@ async def show_shoes_page(update, context, page=0):
     start_idx = current_page * ITEMS_PER_PAGE
     end_idx = min(start_idx + ITEMS_PER_PAGE, total_items)
 
-    sent_message_ids = []
+    # Видаляємо попереднє повідомлення меню
+    if update.callback_query:
+        try:
+            await update.callback_query.message.delete()
+        except Exception as e:
+            logger.warning(f"Не вдалося видалити повідомлення (можливо, вже видалено або не існує): {e}")
 
-    # 2. Відправляємо товари та зберігаємо їх ID
+    # Відправляємо товари
     if not all_items:
-        no_items_msg = await context.bot.send_message(
-            chat_id=chat_id,
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
             text="🙁 <b>На жаль, товарів за вашим запитом не знайдено.</b>",
             parse_mode="HTML"
         )
-        sent_message_ids.append(no_items_msg.message_id)
     elif not all_items[start_idx:end_idx]:
-         no_items_on_page_msg = await context.bot.send_message(
-            chat_id=chat_id,
+         await context.bot.send_message(
+            chat_id=update.effective_chat.id,
             text="🙁 <b>На цій сторінці немає товарів.</b>",
             parse_mode="HTML"
         )
-         sent_message_ids.append(no_items_on_page_msg.message_id)
     else:
         for item in all_items[start_idx:end_idx]:
-            message_obj = await send_shoe_details(context, chat_id, item)
-            if message_obj:
-                sent_message_ids.append(message_obj.message_id)
-    
-    # Зберігаємо ID відправлених повідомлень про товари
-    context.user_data[user_id]['last_shoe_message_ids'] = sent_message_ids
+            await send_shoe_details(context, update.effective_chat.id, item)
 
     # Кнопки пагінації
     pagination_buttons = []
@@ -637,15 +583,12 @@ async def show_shoes_page(update, context, page=0):
         keyboard.append(pagination_buttons)
     keyboard.append(menu_buttons)
 
-    # Відправляємо повідомлення з кнопками пагінації та зберігаємо його ID
-    pagination_message = await context.bot.send_message(
-        chat_id=chat_id,
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
         text=f"📄 <b>Сторінка {current_page+1}/{total_pages if total_pages > 0 else 1} | Знайдено товарів: {total_items}</b>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
-    context.user_data[user_id]['last_pagination_message_id'] = pagination_message.message_id
-
 
 ### Обробники Telegram API
 
@@ -656,19 +599,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #### Обробка кнопок
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Завжди відповідаємо на callback_query, щоб прибрати "годинник"
     data = query.data
 
-    # Очищаємо всі поточні повідомлення з кнопками
-    try:
-        await query.message.delete()
-    except Exception as e:
-        logger.warning(f"Не вдалося видалити повідомлення з кнопками: {e}")
-
-    # Логіка обробки кнопок
     if data == "back_menu":
         await back_to_previous_menu(update, context)
     elif data == "show_all":
+        # Перед показом всіх товарів, скидаємо фільтри, щоб показувати ДІЙСНО ВСІ
         user_id = update.effective_user.id
         user_filters[user_id] = {'brands': [], 'sizes': []}
         await show_shoes_page(update, context, page=0)
@@ -700,9 +637,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Основна функція
 def main():
+    # init_db() # Цей виклик перенесено на початок файлу після імпорту
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    # Обробник текстових повідомлень, але тільки якщо користувач знаходиться в стані додавання товару
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.User(YOUR_ADMIN_ID), add_shoe_message_handler))
     application.add_handler(CallbackQueryHandler(button_handler))
 
